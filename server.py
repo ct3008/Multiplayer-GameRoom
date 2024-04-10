@@ -12,8 +12,8 @@ socketio = SocketIO(app)
 CORS(app)
 
 lobbies = {
-    'XYNO9342': {'players': ['player_test1', 'player_test2'],'game': False},
-    'BBNE9402': {'players': ['player_test3'],'game': False},
+    'XYNO9342': {'players': ['player_test1', 'player_test2'],'game': False, 'players_ready': []},
+    'BBNE9402': {'players': ['player_test3'],'game': False,'players_ready': []},
 }
 
 players = {
@@ -30,7 +30,7 @@ sockets=[] #Unused
 
 
 def startGame(lobby_id):
-    if len(lobbies[lobby_id]['players']) > 2 and not lobbies[lobby_id]['game']:
+    if len(lobbies[lobby_id]['players']) > 5 and not lobbies[lobby_id]['game']:
         lobbies[lobby_id]['game'] = True
         socketio.emit('game_starting', {'message': f'Game starting now in lobby {lobby_id}', 'lobby_id': lobby_id})
         # for player_id in lobbies[lobby_id]['players']:
@@ -69,12 +69,12 @@ def handle_join_lobby(data):
         lobbies[lobby_id]['players'].append(player_id)
         players[player_id] = lobby_id
         
-		#Emits information to player they joined the room and alerts others in the room about this and updates their views
+        #Emits information to player they joined the room and alerts others in the room about this and updates their views
         emit('room_joined', {'lobby_id': lobby_id})
         socketio.emit('room_alert', {'message': f'{player_id} has joined lobby {lobby_id}'})
         socketio.emit('room_update', {'lobby_id': lobby_id, 'lobbies': lobbies})
-
-		#Checks for startGame conditions (3 players in a room)
+        
+        #Checks for startGame conditions (3 players in a room)
         startGame(lobby_id)
     elif players[player_id] == data['lobby_id']: 
         emit('in_correct_room',{'lobby_id': data['lobby_id']})
@@ -110,10 +110,22 @@ def handle_delete_lobby(data):
         del lobbies[lobby_id]
         # print(f"Lobby {lobby_id} deleted.")
     
-
+#Handles logic for a player checking if they are ready to start the game
+@socketio.on('check_start')
+def handle_check_start(data):
+    player_id = data['player_id']
+    lobby_id = players.get(player_id)
+    if lobby_id:
+        if player_id in lobbies[lobby_id]['players']:
+            lobbies[lobby_id]['players_ready'].append(player_id)
+            socketio.emit('room_remaining_players', {'remaining': len(lobbies[lobby_id]['players']) - len(lobbies[lobby_id]['players_ready'])})
+            if len(lobbies[lobby_id]['players_ready']) == len(lobbies[lobby_id]['players']):
+                #All players are ready, start the game
+                lobbies[lobby_id]['game'] = True
+                socketio.emit('game_starting', {'message': f'Game starting now in lobby {lobby_id}', 'lobby_id': lobby_id})
 
 def generate_lobby_id():
-    # For security, combines 4 random letters and 4 numbers to make random lobby ID
+    #For security, combines 4 random letters and 4 numbers to make random lobby ID
     letters = ''.join(random.choices(string.ascii_uppercase, k=4))
     digits = ''.join(random.choices(string.digits, k=4))
     return letters + digits
@@ -124,7 +136,7 @@ def handle_create_lobby(player_id):
     if player_id not in players or players[player_id] == "":
         lobby_id = generate_lobby_id()
         # print("LOBBY ID", lobby_id)
-        lobbies[lobby_id] = {'players': [player_id],'game': False}
+        lobbies[lobby_id] = {'players': [player_id],'game': False, 'players_ready': []}
         players[player_id] = lobby_id
         
         socketio.emit('lobby_update', {'lobby_id': lobby_id, 'lobbies': lobbies})
