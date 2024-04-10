@@ -39,6 +39,7 @@
         #playerList li {
             margin-bottom: 10px;
             font-size: 18px;
+            position: relative; /* Added position relative */
         }
 
         button {
@@ -55,6 +56,17 @@
         button:hover {
             background-color: #0056b3;
         }
+
+        .ready-label {
+            position: absolute;
+            right: 0; /* Adjust the position to the right */
+            top: 0; /* Adjust the position to the top */
+            background-color: green;
+            color: white;
+            padding: 5px;
+            border-radius: 5px;
+            display: none; /* Initially hide the ready label */
+        }
     </style>
 </head>
 
@@ -66,12 +78,19 @@
             <strong>Players:</strong>
             <ul id="playerList">
                 {% for player in lobbies[lobby_id].players %}
-                <li>{{ player }}</li>
+                <li>{{ player }}
+                    <span class="ready-label">Ready</span> <!-- Added ready label -->
+                </li>
                 {% endfor %}
             </ul>
-        </div>
 
-        <button onclick="leaveRoom()">Leave Room</button>
+        </div>
+        <div id="actions">
+            <button id="start_button" onclick="startGame()">Start Game</button>
+            <button onclick="leaveRoom()">Leave Room</button>
+        </div>
+        <div id="status"></div>
+
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.3.1/socket.io.js"></script>
@@ -80,44 +99,55 @@
         const lobbyId = {{ lobby_id|tojson }};
         let lobbies = {{ lobbies|tojson }};
         const playerId = sessionStorage.getItem('playerId');
+        const statusDiv = document.getElementById('status');
 
+        function startGame() {
+            //Emit an event to the server to indicate that the game is starting
+            socket.emit('check_start', { 'player_id': playerId });
+        }
 
         function leaveRoom() {
-			//Emit leave room event upon pressing button
+            //Emit leave room event upon pressing button
             socket.emit('leave_room', { 'player_id': playerId });
             window.location.href = '/';
         }
 
-		//Listen for room update signal to update player list on screen
+        //Listen for room update signal to update player list on screen
         socket.on('room_update', (data) => {
             lobbies[data.lobby_id].players = data.lobbies[data.lobby_id].players;
             updatePlayerList();
         });
 
-		//Listen for room alert signal to send alert message
+        //Listen for room alert signal to send alert message
         socket.on('room_alert', (data) => {
             alert(data.message);
         });
 
-		//Listen for game starting signal to "delete" aka hide the lobby_id and start game and redirect
+        //Listen for game starting signal to redirect to the game page
         socket.on('game_starting', (data) => {
             alert(data.message);
             window.location.href = `/game/${data.lobby_id}`;
         });
 
-		//Listen for redirect 
-        // socket.on('redirect_to_game', (data) => {
-        //     const lobbyId = data.lobby_id;
-        //     window.location.href = `/game/${lobbyId}`;
-        // });
+        //Tell the user how many players still need to respond before starting the game
+        socket.on('room_remaining_players', (data) => {
+            updatePlayerList();
+            statusDiv.textContent = `Waiting for ${data.remaining} more players to choose...`;
+        });
 
-		//Updates view of player list to dynamically update as things change
+        //Updates the view of the player list to dynamically update as things change
         function updatePlayerList() {
             const playerList = document.getElementById('playerList');
             playerList.innerHTML = '';
             lobbies[lobbyId].players.forEach(player => {
                 const listItem = document.createElement('li');
                 listItem.textContent = player;
+
+                const readyLabel = document.createElement('span');
+                readyLabel.textContent = 'Ready';
+                readyLabel.className = 'ready-label';
+                listItem.appendChild(readyLabel);
+
                 playerList.appendChild(listItem);
             });
         }
