@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Don't Press the Wrong Button</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+
+        p {
+            margin: 10px 0;
+            line-height: 1.5;
+        }
+
+        ul {
+            padding-left: 20px;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        #actions {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        #remaining_players {
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        #buttons {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        #status {
+            text-align: center;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Don't Press the Wrong Button</h1>
+        <div>
+            <p><strong>Rules:</strong> Press a button. If everyone presses a different button you win. If any button has more than 1 press, you lose.</p>
+            <p><strong>Players in the Game:</strong></p>
+            <ul>
+                {% for player in players %}
+                <li>{{ player }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        <div id="buttons"></div>
+        <div id="status"></div>
+        <div id="actions" style="display: none;">
+            <button id="play_button" onclick="playAgain()">Play Again</button>
+            <button id="leave_button" onclick="leaveRoom()">Leave Room</button>
+        </div>
+        <div id="remaining_players" style="display: none;"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.3.1/socket.io.js"></script>
+    <script>
+        const socket = io.connect();
+        const playerId = sessionStorage.getItem('playerId');
+        const players = {{ players | tojson }};
+        const buttonsDiv = document.getElementById('buttons');
+        const statusDiv = document.getElementById('status');
+        const remainingPlayersDiv = document.getElementById('remaining_players');
+        let buttonsClicked = 0;
+        let button_number = 1;
+
+        const lobbyId = window.location.pathname.split('/').pop();
+
+        //Dynamically generate buttons for each player
+        for (const player of players) {
+            const button = document.createElement('button');
+            button.textContent = `Press Me`;
+            button.id = `${button_number}`; //Numbers each button from left to right. Makes it easy to check for uniqueness later
+            button.onclick = () => {
+                if (buttonsClicked === 0) { //Only allows one button press
+                    button.style.backgroundColor = '#444'; //Makes button darker to indicate it was pressed
+                    buttonsClicked++;
+                    socket.emit('player_choice', { player_id: playerId, button_id: button.id });
+                    disableAllButtons();
+                }
+            };
+            buttonsDiv.appendChild(button);
+            button_number++;
+        }
+
+        //Function to disable all buttons (called once a choice is picked)
+        function disableAllButtons() {
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(button => {
+                button.disabled = true;
+            });
+        }
+
+        //Listen for remaining players event to print how many players still need to make a choice
+        socket.on('remaining_players', (data) => {
+            statusDiv.textContent = `Waiting for ${data.remaining} more players to choose...`;
+        });
+
+        //Listen for game result event 
+        socket.on('game_result', (data) => {
+            let actionsDiv = document.getElementById('actions');
+            let play_button = document.getElementById('play_button');
+            let leave_button = document.getElementById('leave_button');
+            statusDiv.textContent = data.message;
+            actionsDiv.style.display = 'block';
+            play_button.disabled = false;
+            leave_button.disabled = false;
+        });
+
+		//Listen for replay event and resets the game so it can be replayed
+        socket.on('replay', (data) => {
+            //Reset the color of the buttons to their default color
+            const buttons = document.querySelectorAll('button');
+            const remainingPlayersDiv = document.getElementById('remaining_players');
+            buttons.forEach(button => {
+                button.style.backgroundColor = ''; //Return to default color
+                button.disabled = false; //Enable the buttons to be replayed
+            });
+
+            //Hide the actionsDiv (the replay and leave buttons)
+            const actionsDiv = document.getElementById('actions');
+            actionsDiv.style.display = 'none';
+
+            //Clear the statusDiv text content (for status of game)
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = '';
+
+            //Hide the remainingPlayersDiv (for status of replay buttons)
+            remainingPlayersDiv.style.display = 'none';
+            window.location.reload();
+        });
+
+		//Listen for remaining replay players event to know when all players agree to replay
+        socket.on('remaining_replay_players', (data) => {
+            remainingPlayersDiv.style.display = 'block';
+            remainingPlayersDiv.textContent = `Waiting for ${data.remaining} more player(s) to agree...`;
+        });
+
+        function playAgain() {
+            //Emit an event to the server to play again
+            socket.emit('play_again', { 'player_id': playerId });
+        }
+
+        function leaveRoom() {
+            //Emit leave room event so player can leave and redirect to home page 
+            //For example, redirect the player to the lobby page
+            socket.emit('leave_room', { 'player_id': playerId });
+            window.location.href = '/';
+        }
+
+        socket.on('room_alert', (data) => {
+            //Display room alerts
+            alert(data.message);
+        });
+    </script>
+</body>
+
+</html>

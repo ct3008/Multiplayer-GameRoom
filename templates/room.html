@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Room</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .name {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        #playerList {
+            list-style: none;
+            padding: 0;
+        }
+
+        #playerList li {
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="name">{{ lobby_id }}</div>
+
+        <div>
+            <strong>Players:</strong>
+            <ul id="playerList">
+                {% for player in lobbies[lobby_id].players %}
+                <li>{{ player }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <button onclick="leaveRoom()">Leave Room</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.3.1/socket.io.js"></script>
+    <script>
+        const socket = io.connect();
+        const lobbyId = {{ lobby_id|tojson }};
+        let lobbies = {{ lobbies|tojson }};
+        const playerId = sessionStorage.getItem('playerId');
+
+
+        function leaveRoom() {
+			//Emit leave room event upon pressing button
+            socket.emit('leave_room', { 'player_id': playerId });
+            window.location.href = '/';
+        }
+
+		//Listen for room update signal to update player list on screen
+        socket.on('room_update', (data) => {
+            lobbies[data.lobby_id].players = data.lobbies[data.lobby_id].players;
+            updatePlayerList();
+        });
+
+		//Listen for room alert signal to send alert message
+        socket.on('room_alert', (data) => {
+            alert(data.message);
+        });
+
+		//Listen for game starting signal to "delete" aka hide the lobby_id and start game and redirect
+        socket.on('game_starting', (data) => {
+            alert(data.message);
+            window.location.href = `/game/${data.lobby_id}`;
+        });
+
+		//Listen for redirect 
+        // socket.on('redirect_to_game', (data) => {
+        //     const lobbyId = data.lobby_id;
+        //     window.location.href = `/game/${lobbyId}`;
+        // });
+
+		//Updates view of player list to dynamically update as things change
+        function updatePlayerList() {
+            const playerList = document.getElementById('playerList');
+            playerList.innerHTML = '';
+            lobbies[lobbyId].players.forEach(player => {
+                const listItem = document.createElement('li');
+                listItem.textContent = player;
+                playerList.appendChild(listItem);
+            });
+        }
+    </script>
+</body>
+
+</html>

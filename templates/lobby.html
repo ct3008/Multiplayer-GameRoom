@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Lobby</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        p {
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        li {
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+
+        li div {
+            margin-bottom: 5px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>Welcome to the Lobby</h2>
+        <p>Please select one of the top 3 stores:</p>
+        <ul id="lobbyList">
+            {% for lobby_id, lobby_data in lobbies.items() %}
+            {% if not lobby_data.game %}
+            <li id="{{ lobby_id }}">
+                <div>Room ID: {{ lobby_id }}</div>
+                <div>Number of Participants: <span id="participants_{{ lobby_id }}">{{ lobby_data.players | length }}</span></div>
+                <div>Participants: <span id="participantsList_{{ lobby_id }}">{{ lobby_data.players | join(', ') }}</span></div>
+                <button onclick="joinRoom('{{ lobby_id }}')">Join Room</button>
+            </li>
+            {% endif %}
+            {% endfor %}
+        </ul>
+
+        <form id="createLobbyForm">
+            <button type="button" onclick="createLobby()">Create New Lobby</button>
+        </form>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.3.1/socket.io.js"></script>
+    <script>
+        //Connect to the WebSocket server
+        const socket = io.connect();
+        let playerId = sessionStorage.getItem('playerId');
+
+        //If user ID doesn't exist, generate one
+        if (!playerId) {
+            playerId = generatePlayerId();
+            sessionStorage.setItem('playerId', playerId);
+        }
+
+        function generatePlayerId() {
+            // Generate a random alphanumeric string
+            return Math.random().toString(36).substr(2, 9);
+        }
+
+        //Create a new lobby by sending signal to server over socket
+        function createLobby() {
+            socket.emit('create_lobby', playerId);
+        }
+
+		//Join a lobby by sending signal to server over socket
+        function joinRoom(lobbyId) {
+            socket.emit('join_lobby', { lobby_id: lobbyId, player_id: playerId });
+        }
+
+        //Listen for signal that a lobby was created from server
+        socket.on('lobby_created', (data) => {
+            //Update the lobby list dynamically by appending new room information to lobby listing
+            const lobbyList = document.getElementById('lobbyList');
+            const newLobby = document.createElement('li');
+            newLobby.id = data[1];
+            newLobby.innerHTML = `
+                <div>Room ID: ${data[1]}</div>
+                <div>Number of Participants: <span id="participants_${data[1]}">1</span></div>
+                <div>Participants: <span id="participantsList_${data[1]}">${data[0]['players'] | join(', ')}</span></div>
+                <button onclick="joinRoom('${data[1]}')">Join Room</button>
+            `;
+            lobbyList.appendChild(newLobby);
+        });
+
+        //Listen for signal to update lobby list view (called when something changes in server side)
+        socket.on('lobby_update', (data) => {
+            //Destroy and recreate the lobby list to reflect changes
+            const lobbyList = document.getElementById('lobbyList');
+            lobbyList.innerHTML = '';
+
+            //Iterate through the updated lobbies data and recreate the lobby list
+			//Check that the lobby isn't currently involved in a game
+            for (const [lobbyId, lobbyData] of Object.entries(data.lobbies)) {
+                if (!lobbyData.game) {
+                    const newLobby = document.createElement('li');
+                    newLobby.id = lobbyId;
+                    newLobby.innerHTML = `
+                        <div>Room ID: ${lobbyId}</div>
+                        <div>Number of Participants: <span id="participants_${lobbyId}">${lobbyData.players.length}</span></div>
+                        <div>Participants: <span id="participantsList_${lobbyId}">${lobbyData.players.join(', ')}</span></div>
+                        <button onclick="joinRoom('${lobbyId}')">Join Room</button>
+                    `;
+                    lobbyList.appendChild(newLobby);
+                }
+            }
+        });
+
+		//Listen for signal that player joined a room and redirect to that page
+        socket.on('room_joined', (data) => {
+            window.location.href = `/room/${data.lobby_id}`;
+        });
+
+		//Listen for signal that game started and display alert + redirect 
+        socket.on('game_starting', (data) => {
+            // Display room alerts
+            alert(data.message);
+            window.location.href = `/game/${data.lobby_id}`;
+            // socket.emit('delete_lobby', {lobby_id: data.lobby_id});
+        });
+
+		//Alert for if player tries to enter multiple rooms
+        socket.on('already_in_room', (data) => {
+            alert(data.message);
+        });
+
+		//Alert for if player is in a room but not in the correct view and presses join for the correct
+		//room so that they can be redirected
+		//(Mainly happens with create because upon creating, the player is automatically added to the room, but not redirected)
+        socket.on('in_correct_room', (data) => {
+            window.location.href = `/room/${data.lobby_id}`;
+        });
+    </script>
+</body>
+
+</html>
