@@ -14,12 +14,13 @@ until the tab is closed). If you encounter an error, check below.
 
 The first two rooms are just there to see what the interface looks on. To actually be able
 to play the game, click on create room and then join the room. The other tabs you have open
-should be updated to reflect the new room created. Other players can now join. After 3 players
+should be updated to reflect the new room created. Other players can now join. After 5 players
 have joined, the game should start. Throughout, there will be alerts telling people in other
-rooms of people joining or leaving rooms and games starting. 
+rooms of people joining or leaving rooms and games starting. It also allows you to start a game early
+if everyone agrees.
 
 
-LINK TO A DEMO VIDEO: "https://youtu.be/4ScWIcRUezg"
+LINK TO A DEMO VIDEO: "https://youtu.be/twJ-lY9IxR8"
 
 
 Implemented:
